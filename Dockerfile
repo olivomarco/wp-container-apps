@@ -5,7 +5,7 @@
 FROM wordpress:latest
 
 # Add sudo in order to run wp-cli as the www-data user 
-RUN apt-get update && apt-get install -y sudo less mysql-client
+RUN apt-get update && apt-get install -y sudo less wget
 
 # Add WP-CLI 
 RUN curl -o /bin/wp-cli.phar https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
