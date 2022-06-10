@@ -1,4 +1,3 @@
-.git
-.gitignore
-Dockerfile
-README.md
+assets
+*md
+deploy.sh
