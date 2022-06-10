@@ -9,6 +9,8 @@ In particular, we will use the following:
 - Azure Container Registry, to store our container image
 - we will also use Virtual Networks in order to keep our database private and not exposed to the internet
 
+The idea is to use as much managed/serverless services as possible, and to do it in a scalable and economical way.
+
 ## Architecture
 
 This diagram explains the architecture we are going to setup:
@@ -56,14 +58,17 @@ Creating this VNET is simple as running:
 
 ```bash
 az network vnet create --name vnet-wordpress --resource-group $RG_NAME --location $LOCATION
-az network vnet subnet create --resource-group $RG_NAME --vnet-name vnet-wordpress --name subnet-capps --address-prefixes 10.0.0.0/23
-az network vnet subnet create --resource-group $RG_NAME --vnet-name vnet-wordpress --name subnet-db --address-prefixes 10.0.2.0/24
+az network vnet subnet create --resource-group $RG_NAME \
+    --vnet-name vnet-wordpress --name subnet-capps --address-prefixes 10.0.0.0/23
+az network vnet subnet create --resource-group $RG_NAME \
+    --vnet-name vnet-wordpress --name subnet-db --address-prefixes 10.0.2.0/24
 ```
 
 We will also need to take note in a variable of the actual resource ID of our `subnet-capps` subnet:
 
 ```bash
-capps_id=$(az network vnet subnet show --vnet-name vnet-wordpress --resource-group $RG_NAME --name subnet-capps --output tsv --query 'id' | tr -d '\r\n')
+capps_id=$(az network vnet subnet show --vnet-name vnet-wordpress --resource-group $RG_NAME \
+    --name subnet-capps --output tsv --query 'id' | tr -d '\r\n')
 ```
 
 ### Create container registry
@@ -127,7 +132,8 @@ az storage container create --name "uploads" \
     --public-access blob \
     --account-name $STORAGE_NAME \
     --resource-group $RG_NAME
-STORAGE_KEY=$(az storage account keys list --resource-group $RG_NAME --account-name $STORAGE_NAME --output tsv --query '[0].value' | tr -d '\r\n')
+STORAGE_KEY=$(az storage account keys list --resource-group $RG_NAME \
+    --account-name $STORAGE_NAME --output tsv --query '[0].value' | tr -d '\r\n')
 ```
 
 we will create our storage account and blob container and save in a local variable our storage key, that will be passed as a secret to our container application.
@@ -199,10 +205,11 @@ and logging in to `wp-admin` with the user you create in the installation step, 
 
 ![Enable Microsoft Azure Storage plugin](/assets/azure_storage_plugin.png)
 
-That's it. Wordpress is up and running, and fully configured.
+That's it. Wordpress is up and running on serverless/managed Azure resources, and it's fully configured and ready to host your new blog.
 
 ## Conclusions
 
 This article provided a step-by-step guide on how to leverage on Azure Container Apps and some other Azure services to setup a running installation of Wordpress that can be used in production, with scale to zero functionality and minimal effort of operations.
+The concept was to show how to setup a production-ready installation of a real software, and to allow readers not to start from scratch.
 
-Further developments of this architecture could include deployment to multiple regions and WAF protection through usage of Azure Front Door, and leveraging on Front Door features and Wordpress plugins (such as WP Super Cache, which is installed in the package that we are providing) in order to setup a CDN for content and multimedia, so that users can benefit from low-latency no matter where they are.
+Further developments of this architecture could include deployment to multiple regions and WAF protection through usage of Azure Front Door, and/or leveraging on Front Door features and Wordpress plugins (such as WP Super Cache, which is installed in the package that we are providing) in order to setup a CDN for content and multimedia, so that users can benefit from low-latency no matter where they are.
