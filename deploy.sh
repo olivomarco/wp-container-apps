@@ -25,7 +25,7 @@ az group create --name $RG_NAME --location $LOCATION
 # create vnet and 2 subnets (one for Wordpress and one for our DB)
 az network vnet create --name vnet-wordpress --resource-group $RG_NAME --location $LOCATION
 az network vnet subnet create --resource-group $RG_NAME --vnet-name vnet-wordpress --name subnet-capps --address-prefixes 10.0.0.0/23
-az network vnet subnet create --resource-group $RG_NAME --vnet-name vnet-wordpress --name subnet-db --address-prefixes 10.0.2.0/24
+az network vnet subnet create --resource-group $RG_NAME --vnet-name vnet-wordpress --name subnet-db --address-prefixes 10.0.2.0/28
 capps_id=$(az network vnet subnet show --vnet-name vnet-wordpress --resource-group $RG_NAME --name subnet-capps --output tsv --query 'id' | tr -d '\r\n')
 
 # create azure container registry
