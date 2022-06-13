@@ -1,29 +1,29 @@
 # Wordpress on Azure Container Apps, MySQL Flexible Server, Azure Storage
 
-This document outlines a setup of an (almost) production-ready installation of Wordpress using Azure services.
+This document describes a setup of an (almost) production-ready installation of Wordpress using Azure services.
 In particular, we will use the following:
 
 - Azure Container Apps, to deploy containers in a serverless way, using also scale-to-zero functionality
 - Azure MySQL Flexible Server, as a PaaS database
-- Azure Storage Account (blob), to store files uploaded to Wordpress
-- Azure Container Registry, to store our container image
+- Azure Storage Account (blob), to store files uploaded to Wordpress (multimedia and attachments for blog posts)
+- Azure Container Registry, to store our WP container image
 - we will also use Virtual Networks in order to keep our database private and not exposed to the internet
 
-The idea is to use as much managed/serverless services as possible, and to do it in a scalable and economical way.
+The idea is to use as much managed/serverless services as possible, and do it in a scalable and economical way.
 
 ## Architecture
 
-This diagram explains the architecture we are going to setup:
+This diagram shows the architecture we are going to setup:
 
 ![Wordpress Architecture diagram on Azure](/assets/architecture.png)
 
 ## Setup steps
 
-Here a short summary of the various commands and outputs is provided. Please refer to [this script](/deploy.sh) for a complete working script to do unsupervised deployment.
+In this chapter I will provide a short summary of the various commands and their outputs, and guide readers in understanding what they are doing. Please refer to [this script](/deploy.sh) for a complete working script to do unsupervised deployment.
 
 ### Set variables, create resource group
 
-After opening a new bash shell, we will define some variables using some randomic numbers (to avoid name conflicts):
+After opening a new bash shell, we will define some variables using some random numbers (we are doing so to avoid name conflicts, since this is a scripted installation that can be used by anyone on the Internet):
 
 ```bash
 id=$(shuf -i 0-10000 -n 1)
@@ -39,17 +39,17 @@ WORDPRESS_USERNAME=wpuser
 WORDPRESS_PASSWORD=$(tr -dc 'A-Za-z0-9!"#$%&'\''()*+,-./:;<=>?@[\]^_`{|}~' < /dev/urandom | head -c 15 ; echo)
 ```
 
-and we will create our resource group:
+Then, we will create our resource group:
 
 ```bash
 az group create --name $RG_NAME --location $LOCATION
 ```
 
-Feel free to adjust variables above accordingly to your needs: they will be used throught the following steps.
+Feel free to adjust variables above accordingly to your needs: all these variables will be used in the following steps.
 
 ### Create Virtual Network (VNET) and subnets
 
-Our setup ensures that our DB never gets exposed to the Internet. To do this, we need a VNET (Virtual Network) and a couple of subnets in it:
+Our DB is not exposed to the Internet: that's a thing you want to achieve for security reasons. To do this, we'll need a VNET (Virtual Network) and a couple of subnets in it:
 
 - our first subnet, named `subnet-capps`, will be the subnet dedicated to Azure Container Apps
 - the second subnet, named `subnet-db`, will be the subnet dedicated to our MySQL database
@@ -61,7 +61,7 @@ az network vnet create --name vnet-wordpress --resource-group $RG_NAME --locatio
 az network vnet subnet create --resource-group $RG_NAME \
     --vnet-name vnet-wordpress --name subnet-capps --address-prefixes 10.0.0.0/23
 az network vnet subnet create --resource-group $RG_NAME \
-    --vnet-name vnet-wordpress --name subnet-db --address-prefixes 10.0.2.0/24
+    --vnet-name vnet-wordpress --name subnet-db --address-prefixes 10.0.2.0/28
 ```
 
 We will also need to take note in a variable of the actual resource ID of our `subnet-capps` subnet:
@@ -73,9 +73,9 @@ capps_id=$(az network vnet subnet show --vnet-name vnet-wordpress --resource-gro
 
 ### Create container registry
 
-We will then create an Azure Container Registry in order to build and store our custom Wordpress image. In fact, Wordpress source-code provided in this repository has been adapted a bit in order to be able to run inside Azure Container Apps.
+We will then create an Azure Container Registry in order to build and store our custom Wordpress image. In fact, Wordpress source-code provided in this repository has been adapted a bit from the standard you can download, in order to be able to run inside Azure Container Apps.
 
-The following changes were made to the default installation package you can get from [wordpress.org](https://wordpress.org):
+The following changes were made to the default installation package you can get from [wordpress.org](https://wordpress.org/download):
 
 - Created a custom [.htaccess](/public/.htaccess) file
 - Configured a custom [wp-config.php](/public/wp-config.php) file
@@ -85,7 +85,7 @@ The following changes were made to the default installation package you can get 
 
 That's it.
 
-To create Azure Container Registry and build our image run the following commands:
+To create Azure Container Registry and build our image, run the following commands:
 
 ```bash
 az acr create --name $ACR_NAME --resource-group $RG_NAME --sku Basic --admin-enabled true
@@ -96,11 +96,13 @@ az acr login --name $ACR_NAME --username $ACR_USERNAME --password $ACR_PASSWORD
 az acr build --registry $ACR_NAME --image $IMAGE_NAME --file Dockerfile .
 ```
 
+Now, our Azure Container Registry contains our custom, stateless Wordpress image.
+
 ### Deploy Database
 
-Wordpress needs a MySQL DB. Luckily, Azure offers a managed MySQL database we can use and completely avoid messing up with virtual machines and MySQL installation.
+Wordpress needs a MySQL DB. Azure offers a managed MySQL database we can use so that we completely avoid messing up with virtual machines and MySQL installations.
 
-We can deploy our database with the following commands:
+We can deploy our database and have it up&running with the following commands:
 
 ```bash
 az mysql flexible-server create --location $LOCATION --resource-group $RG_NAME \
@@ -113,6 +115,8 @@ az mysql flexible-server create --location $LOCATION --resource-group $RG_NAME \
     --vnet vnet-wordpress --subnet subnet-db \
     --yes
 ```
+
+We won't be able to directly connect from our machine to this DB: in fact, this DB is closed inside a VNET, as described above, for security reasons. Only our container apps instance will be able to connect to it, in a private way.
 
 ### Create blob container
 
@@ -137,6 +141,8 @@ STORAGE_KEY=$(az storage account keys list --resource-group $RG_NAME \
 ```
 
 we will create our storage account and blob container and save in a local variable our storage key, that will be passed as a secret to our container application.
+
+Please note that in this case our blob container will be exposed directly to our users via the Internet; in fact, in our pages the URL of uploaded images/attachments will be directly those of the Storage Account.
 
 ### Deploy container apps
 
@@ -181,9 +187,9 @@ az containerapp create --name $CONTAINERAPP \
                MICROSOFT_AZURE_USE_FOR_DEFAULT_UPLOAD=1
 ```
 
-which will bring up our Wordpress container and pass all the necessary environment variables and settings that Wordpress expects (most of them are read via the [custom wp-config.php file](/public/wp-config.php))
+which will bring up our Wordpress container and pass all the necessary environment variables and settings that Wordpress expects (which in turn are read by Wordpress via the [custom wp-config.php file](/public/wp-config.php))
 
-After this command runs, you should have this situation inside your resource group on Azure:
+After this command ends, you should have this situation inside your resource group on Azure:
 
 ![Deployed resouces on Azure for Wordpress](/assets/deployed_resources.png)
 
@@ -193,7 +199,7 @@ By running this command in your shell:
 az containerapp show --name $CONTAINERAPP --resource-group $RG_NAME --output tsv --query 'properties.configuration.ingress.fqdn'
 ```
 
-you will get the URL at which Wordpress is live. Connect to it immediately to complete your Wordpress setup.
+you will get the URL at which Wordpress is responding. Connect to it immediately via a browser to complete your Wordpress setup.
 
 ### Final Wordpress configuration steps
 
@@ -201,15 +207,15 @@ After running through the usual Wordpress installation screen:
 
 ![Wordpress installation screen](/assets/wp_install.png)
 
-and logging in to `wp-admin` with the user you create in the installation step, go to plugins and enable "Microsoft Azure Storage for WordPress":
+and logging in to `wp-admin` with the user you create in the installation step, go to WP plugins and enable "Microsoft Azure Storage for WordPress":
 
 ![Enable Microsoft Azure Storage plugin](/assets/azure_storage_plugin.png)
 
-That's it. Wordpress is up and running on serverless/managed Azure resources, and it's fully configured and ready to host your new blog.
+That's it. Wordpress is now up and running on serverless/managed Azure resources, and it's fully configured and ready to host your new blog. Start uploading stuff, writing new articles, or doing a load test in order to prove Container Apps scalability.
 
 ## Conclusions
 
-This article provided a step-by-step guide on how to leverage on Azure Container Apps and some other Azure services to setup a running installation of Wordpress that can be used in production, with scale to zero functionality and minimal effort of operations.
+This article provided a step-by-step guide on how to leverage Azure Container Apps and some other Azure services to setup a working installation of Wordpress that can be used in production, with scale to zero functionality and minimal effort of operations.
 The concept was to show how to setup a production-ready installation of a real software, and to allow readers not to start from scratch.
 
 Further developments of this architecture could include deployment to multiple regions and WAF protection through usage of Azure Front Door, and/or leveraging on Front Door features and Wordpress plugins (such as WP Super Cache, which is installed in the package that we are providing) in order to setup a CDN for content and multimedia, so that users can benefit from low-latency no matter where they are.
