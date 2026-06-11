@@ -18,15 +18,16 @@ WORDPRESS_USERNAME=wpuser
 WORDPRESS_PASSWORD=$(tr -dc 'A-Za-z0-9!"#$%&'\''()*+,-./:;<=>?@[\]^_`{|}~' < /dev/urandom | head -c 15 ; echo)
 MYSQL_SERVER_NAME=wordpressmysql-$id
 STORAGE_NAME=sawordpress$id
+VNET_NAME=vnet-wordpress
 
 # create rg
 az group create --name $RG_NAME --location $LOCATION
 
 # create vnet and 2 subnets (one for Wordpress and one for our DB)
-az network vnet create --name vnet-wordpress --resource-group $RG_NAME --location $LOCATION
-az network vnet subnet create --resource-group $RG_NAME --vnet-name vnet-wordpress --name subnet-capps --address-prefixes 10.0.0.0/23
-az network vnet subnet create --resource-group $RG_NAME --vnet-name vnet-wordpress --name subnet-db --address-prefixes 10.0.2.0/28
-capps_id=$(az network vnet subnet show --vnet-name vnet-wordpress --resource-group $RG_NAME --name subnet-capps --output tsv --query 'id' | tr -d '\r\n')
+az network vnet create --name $VNET_NAME --resource-group $RG_NAME --location $LOCATION
+az network vnet subnet create --resource-group $RG_NAME --vnet-name $VNET_NAME --name subnet-capps --address-prefixes 10.0.0.0/23
+az network vnet subnet create --resource-group $RG_NAME --vnet-name $VNET_NAME --name subnet-db --address-prefixes 10.0.2.0/28
+capps_id=$(az network vnet subnet show --vnet-name $VNET_NAME --resource-group $RG_NAME --name subnet-capps --output tsv --query 'id' | tr -d '\r\n')
 
 # create azure container registry
 az acr create --name $ACR_NAME --resource-group $RG_NAME --sku Basic --admin-enabled true
@@ -45,7 +46,7 @@ az mysql flexible-server create --location $LOCATION --resource-group $RG_NAME \
     --version 5.7 \
     --storage-auto-grow Enabled \
     --database-name wordpress \
-    --vnet vnet-wordpress --subnet subnet-db \
+    --vnet $VNET_NAME --subnet subnet-db \
     --yes
 
 # create azure storage account, a blob and extract primary access key
