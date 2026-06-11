@@ -59,6 +59,13 @@ az storage container create --name "uploads" \
     --resource-group $RG_NAME
 STORAGE_KEY=$(az storage account keys list --resource-group $RG_NAME --account-name $STORAGE_NAME --output tsv --query '[0].value' | tr -d '\r\n')
 
+# avoid ManagedEnvironmentSubnetDelegationError by specifying subnet delegation
+az network vnet subnet update \
+  --resource-group $RG_NAME \
+  --vnet-name $VNET_NAME \
+  --name subnet-capps \
+  --delegations Microsoft.App/environments
+
 # create azure container apps environment and deploy our container
 az containerapp env create --name $CONTAINERAPP_ENV \
     --resource-group $RG_NAME \
