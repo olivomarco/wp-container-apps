@@ -33,7 +33,7 @@ capps_id=$(az network vnet subnet show --vnet-name $VNET_NAME --resource-group $
 az acr create --name $ACR_NAME --resource-group $RG_NAME --sku Basic --admin-enabled true
 ACR_USERNAME=$(az acr credential show --name $ACR_NAME --output tsv --query "username" | tr -d '\r\n')
 ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --output tsv --query "passwords[0].value" | tr -d '\r\n')
-az acr login --name $ACR_NAME --expose-token
+az acr login --name $ACR_NAME
 
 # build & push docker image
 az acr build --registry $ACR_NAME --image $IMAGE_NAME --file Dockerfile .

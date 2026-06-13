@@ -35,6 +35,7 @@ IMAGE_NAME=demo/wordpress:latest
 ACR_NAME=acrwordpressdemo$id
 MYSQL_SERVER_NAME=wordpressmysql-$id
 STORAGE_NAME=sawordpress$id
+VNET_NAME=vnet-wordpress
 WORDPRESS_USERNAME=wpuser
 WORDPRESS_PASSWORD=$(tr -dc 'A-Za-z0-9!"#$%&'\''()*+,-./:;<=>?@[\]^_`{|}~' < /dev/urandom | head -c 15 ; echo)
 ```
@@ -57,17 +58,17 @@ Our DB is not exposed to the Internet: that's a thing you want to achieve for se
 Creating this VNET is simple as running:
 
 ```bash
-az network vnet create --name vnet-wordpress --resource-group $RG_NAME --location $LOCATION
+az network vnet create --name $VNET_NAME --resource-group $RG_NAME --location $LOCATION
 az network vnet subnet create --resource-group $RG_NAME \
-    --vnet-name vnet-wordpress --name subnet-capps --address-prefixes 10.0.0.0/23
+    --vnet-name $VNET_NAME --name subnet-capps --address-prefixes 10.0.0.0/23
 az network vnet subnet create --resource-group $RG_NAME \
-    --vnet-name vnet-wordpress --name subnet-db --address-prefixes 10.0.2.0/28
+    --vnet-name $VNET_NAME --name subnet-db --address-prefixes 10.0.2.0/28
 ```
 
 We will also need to take note in a variable of the actual resource ID of our `subnet-capps` subnet:
 
 ```bash
-capps_id=$(az network vnet subnet show --vnet-name vnet-wordpress --resource-group $RG_NAME \
+capps_id=$(az network vnet subnet show --vnet-name $VNET_NAME --resource-group $RG_NAME \
     --name subnet-capps --output tsv --query 'id' | tr -d '\r\n')
 ```
 
@@ -91,10 +92,12 @@ To create Azure Container Registry and build our image, run the following comman
 az acr create --name $ACR_NAME --resource-group $RG_NAME --sku Basic --admin-enabled true
 ACR_USERNAME=$(az acr credential show --name $ACR_NAME --output tsv --query "username" | tr -d '\r\n')
 ACR_PASSWORD=$(az acr credential show --name $ACR_NAME --output tsv --query "passwords[0].value" | tr -d '\r\n')
-az acr login --name $ACR_NAME --username $ACR_USERNAME --password $ACR_PASSWORD
+az acr login --name $ACR_NAME
 
 az acr build --registry $ACR_NAME --image $IMAGE_NAME --file Dockerfile .
 ```
+
+The `az acr login` command uses your Azure CLI identity to authenticate Docker with the registry. We still retrieve `ACR_USERNAME` and `ACR_PASSWORD` because `az containerapp create` uses those registry credentials later when pulling the image.
 
 Now, our Azure Container Registry contains our custom, stateless Wordpress image.
 
@@ -112,7 +115,7 @@ az mysql flexible-server create --location $LOCATION --resource-group $RG_NAME \
     --version 5.7 \
     --storage-auto-grow Enabled \
     --database-name wordpress \
-    --vnet vnet-wordpress --subnet subnet-db \
+    --vnet $VNET_NAME --subnet subnet-db \
     --yes
 ```
 
@@ -147,6 +150,18 @@ Please note that in this case our blob container will be exposed directly to our
 ### Deploy container apps
 
 And now, before going live, let's run the final deployment commands. We need to create a container app environment which is capable of hosting multiple containers and that must be integrated inside the VNET we created before.
+
+Before creating the Container Apps environment, delegate the Container Apps subnet to `Microsoft.App/environments`:
+
+```bash
+az network vnet subnet update \
+    --resource-group $RG_NAME \
+    --vnet-name $VNET_NAME \
+    --name subnet-capps \
+    --delegations Microsoft.App/environments
+```
+
+This delegation is required by current Azure Container Apps VNET integration. Without it, `az containerapp env create` can fail with `ManagedEnvironmentSubnetDelegationError`.
 
 For doing so, we will run:
 
